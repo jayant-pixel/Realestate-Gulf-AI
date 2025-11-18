@@ -1,0 +1,772 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import '@livekit/components-styles';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+}
+
+:root {
+  --estate-primary: #0ea5e9;
+  --estate-primary-dark: #0369a1;
+  --estate-overlay: rgba(8, 15, 30, 0.72);
+}
+
+.estate-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  padding: 4rem 1.5rem;
+  color: #fff;
+  text-align: center;
+  background-image:
+    linear-gradient(var(--estate-overlay), rgba(3, 7, 18, 0.85)),
+    url('https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1600&q=80');
+  background-position: center;
+  background-size: cover;
+}
+
+.estate-hero__glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 20%, rgba(14, 165, 233, 0.4), transparent 55%);
+  pointer-events: none;
+}
+
+.estate-hero__content {
+  position: relative;
+  z-index: 1;
+  max-width: 42rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.estate-hero__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 2.5rem;
+  padding: 0 2.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: linear-gradient(135deg, var(--estate-primary), var(--estate-primary-dark));
+  color: #fff;
+  box-shadow: 0 22px 35px rgba(14, 165, 233, 0.45);
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+
+.estate-hero__cta:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: 0 16px 30px rgba(14, 165, 233, 0.2);
+}
+
+.estate-hero__cta:not(:disabled):hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 28px 45px rgba(14, 165, 233, 0.6);
+}
+
+.estate-room {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(59, 130, 246, 0.22), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.18), transparent 50%),
+    #06070a;
+  color: #f8fafc;
+  overflow: hidden;
+}
+
+.avatar-room {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  color: #e2e8f0;
+  background: radial-gradient(circle at 15% 20%, rgba(22, 111, 185, 0.35), transparent 50%),
+    radial-gradient(circle at 90% 10%, rgba(7, 89, 133, 0.2), transparent 55%),
+    radial-gradient(circle at 50% 100%, rgba(2, 30, 66, 0.35), transparent 45%),
+    #010b1d;
+}
+
+.avatar-room__gradient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.2), transparent 55%);
+}
+
+.avatar-room__layout {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: clamp(2rem, 6vw, 4rem) clamp(1.5rem, 5vw, 4rem) 3rem;
+}
+
+.avatar-room__body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 2.5rem);
+  align-items: stretch;
+}
+
+@media (max-width: 1024px) {
+  .avatar-room__body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.avatar-card {
+  position: relative;
+  border-radius: 32px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: linear-gradient(145deg, rgba(8, 25, 54, 0.9), rgba(3, 8, 20, 0.85));
+  box-shadow: 0 35px 120px rgba(3, 105, 161, 0.25);
+  overflow: hidden;
+}
+
+.avatar-card--video {
+  min-height: clamp(320px, 55vh, 520px);
+}
+
+.avatar-card__glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.2), transparent 60%);
+}
+
+.avatar-video {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  border-radius: 32px;
+}
+
+.avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: rgba(2, 6, 23, 0.8);
+  backdrop-filter: blur(6px);
+  text-align: center;
+}
+
+.avatar-alert {
+  position: absolute;
+  left: 50%;
+  bottom: 1.75rem;
+  transform: translateX(-50%);
+  max-width: 420px;
+  border-radius: 20px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.45);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+  color: #fde8e8;
+  box-shadow: 0 20px 50px rgba(127, 29, 29, 0.35);
+}
+
+.avatar-room__badge {
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: rgba(10, 25, 54, 0.7);
+  padding: 0.75rem 1.1rem;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 18px 45px rgba(14, 165, 233, 0.15);
+}
+
+.avatar-card--sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1.5rem, 4vw, 2rem);
+}
+
+.avatar-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.avatar-stream {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-right: 0.25rem;
+  scrollbar-width: thin;
+}
+
+.avatar-stream::-webkit-scrollbar {
+  width: 6px;
+}
+
+.avatar-stream::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 999px;
+}
+
+.avatar-stream__empty {
+  border-radius: 24px;
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  padding: 1.5rem;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.7);
+  text-align: center;
+}
+
+.avatar-stream__item {
+  border-radius: 24px;
+  padding: 1rem 1.25rem;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.avatar-stream__item--agent {
+  background: linear-gradient(130deg, rgba(13, 148, 136, 0.65), rgba(6, 95, 70, 0.55));
+  border-color: rgba(45, 212, 191, 0.35);
+}
+
+.avatar-stream__item--visitor {
+  background: linear-gradient(130deg, rgba(59, 130, 246, 0.6), rgba(30, 64, 175, 0.55));
+  border-color: rgba(147, 197, 253, 0.35);
+}
+
+.avatar-stream__role {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.avatar-card--properties {
+  padding: clamp(1.75rem, 4vw, 2.25rem);
+}
+
+.avatar-property {
+  margin-top: 1.5rem;
+}
+
+.avatar-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+.avatar-control-bar {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 999px;
+  background: rgba(7, 20, 45, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  padding: 0.6rem 1.2rem;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.avatar-control-bar__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.12);
+  padding: 0.45rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #f8fafc;
+  transition: all 0.2s ease;
+}
+
+.avatar-control-bar__button:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.2);
+  transform: translateY(-1px);
+}
+
+.avatar-control-bar__button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.avatar-control-bar__button--end {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(127, 29, 29, 0.4);
+}
+
+.avatar-control-bar__button--end:hover:not(:disabled) {
+  background: rgba(127, 29, 29, 0.55);
+}
+
+.estate-room__stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.estate-room__video {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #040404;
+}
+
+.estate-room__video-feed {
+  width: 100%;
+  height: 100%;
+  max-width: 1200px;
+  object-fit: contain;
+}
+
+.estate-room__waiting {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #0f172a;
+}
+
+.estate-room__waiting-card {
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 2.5rem 3rem;
+  text-align: center;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.25);
+  backdrop-filter: blur(16px);
+}
+
+.estate-room__waiting-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.estate-room__waiting-subtitle {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: rgba(15, 23, 42, 0.68);
+}
+
+.estate-room__overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: clamp(1.5rem, 4vw, 3rem);
+}
+
+.estate-room__controls {
+  pointer-events: none;
+  position: absolute;
+  inset-x: 0;
+  bottom: clamp(1.5rem, 5vw, 3rem);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.estate-control-bar {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  border-radius: 999px;
+  padding: 0.75rem 1.5rem;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(16px);
+  color: #f1f5f9;
+}
+
+.estate-control-bar__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.45rem 1.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.estate-control-bar__button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.estate-control-bar__button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.estate-control-bar__button--primary {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.estate-control-bar__button--danger {
+  background: rgba(244, 63, 94, 0.22);
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
+.estate-control-bar__button--danger:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.32);
+}
+
+.estate-overlay {
+  pointer-events: none;
+  width: min(95%, 1100px);
+  max-width: 1100px;
+}
+
+.estate-overlay__card {
+  pointer-events: auto;
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  color: #0f172a;
+  backdrop-filter: blur(18px);
+}
+
+.estate-overlay__header {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.estate-overlay__eyebrow {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4em;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.estate-overlay__title {
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-weight: 700;
+}
+
+.estate-overlay__subtitle {
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+  color: rgba(15, 23, 42, 0.72);
+  max-width: 48rem;
+}
+
+.estate-overlay__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.estate-overlay__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  padding: 0.3rem 0.95rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(15, 23, 42, 0.75);
+}
+
+.estate-overlay__badge--accent {
+  background: rgba(59, 130, 246, 0.15);
+  color: rgba(29, 78, 216, 0.9);
+}
+
+.estate-overlay__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+  margin-top: clamp(1.75rem, 3vw, 2.5rem);
+}
+
+@media (max-width: 1024px) {
+  .estate-overlay__content {
+    grid-template-columns: 1fr;
+  }
+}
+
+.estate-overlay__section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(15, 23, 42, 0.55);
+  margin-bottom: 1rem;
+}
+
+.estate-overlay__conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.estate-overlay__timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.estate-overlay__timeline::-webkit-scrollbar {
+  width: 6px;
+}
+
+.estate-overlay__timeline::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.2);
+}
+
+.estate-overlay__timeline-item {
+  border-radius: 18px;
+  padding: 0.85rem 1rem;
+  background: rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.estate-overlay__timeline-item--agent {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.estate-overlay__timeline-item--visitor {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.estate-overlay__timeline-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.estate-overlay__placeholder {
+  border-radius: 20px;
+  border: 1px dashed rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.04);
+  padding: 1.5rem;
+  font-size: 0.9rem;
+  color: rgba(15, 23, 42, 0.6);
+  text-align: center;
+}
+
+.estate-property-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr);
+  gap: clamp(1rem, 2vw, 1.75rem);
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .estate-property-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+.estate-property-panel__menu {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+}
+
+.estate-property-panel__menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.9rem 1rem;
+  text-align: left;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.estate-property-panel__menu-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.12);
+}
+
+.estate-property-panel__menu-item--active {
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 20px 30px rgba(59, 130, 246, 0.2);
+  background: rgba(239, 246, 255, 0.95);
+}
+
+.estate-property-panel__menu-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.estate-property-panel__menu-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.estate-property-panel__menu-subtitle {
+  font-size: 0.8rem;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.estate-property-panel__menu-price {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(59, 130, 246, 0.9);
+}
+
+.estate-property-panel__detail {
+  border-radius: 24px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  overflow: hidden;
+  min-height: 280px;
+}
+
+.estate-property-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.estate-property-card__hero {
+  position: relative;
+  width: 100%;
+  height: clamp(160px, 30vw, 220px);
+  overflow: hidden;
+}
+
+.estate-property-card__hero-image {
+  object-fit: cover;
+}
+
+.estate-property-card__body {
+  padding: clamp(1.25rem, 2.5vw, 1.75rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.estate-property-card__title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.estate-property-card__location {
+  font-size: 0.9rem;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.estate-property-card__price {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(59, 130, 246, 0.9);
+}
+
+.estate-property-card__highlights {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.estate-property-card__amenities,
+.estate-property-card__units-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.estate-property-card__chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.estate-property-card__chip--accent {
+  background: rgba(59, 130, 246, 0.15);
+  color: rgba(29, 78, 216, 0.88);
+}
+
+.estate-property-card__units {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.estate-property-card__units-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(15, 23, 42, 0.6);
+}

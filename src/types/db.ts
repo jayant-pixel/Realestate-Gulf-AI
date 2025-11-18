@@ -71,12 +71,14 @@ export interface AdminProfile {
 export interface AIAvatar {
   id: string;
   name: string;
-  heygen_avatar_id: string;
   system_prompt: string;
   is_active: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  anam_avatar_id?: string | null;
+  openai_voice?: string | null;
+  openai_realtime_model?: string | null;
 }
 
 export interface PublicLink {
@@ -88,7 +90,17 @@ export interface PublicLink {
   config: {
     model?: string;
     voice?: string;
+    assistantPrompt?: string;
+    avatarId?: string | null;
+    welcomeMessage?: string;
+    avatarName?: string;
+    avatarVariant?: string;
+    avatarImage?: string;
   };
+  livekit_room?: string | null;
+  agent_identity?: string | null;
+  default_property_id?: string | null;
+  livekit_metadata?: Record<string, unknown> | null;
   rate_limit_per_min: number;
   created_by: string | null;
   created_at: string;

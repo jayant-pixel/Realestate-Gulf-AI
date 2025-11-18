@@ -16,49 +16,83 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { intent, name, location, filters } = await req.json();
+    const {
+      query,
+      filters,
+      property_id: propertyId,
+      include_faq: includeFaq,
+    } = await req.json();
 
-    let query = supabase.from('properties').select('*');
+    const baseSelect =
+      'id, name, location, base_price, amenities, unit_types, availability, highlights, hero_image, bedrooms, bathrooms, area_sqft, project_status';
 
-    if (name) {
-      query = query.ilike('name', `%${name}%`);
-    }
-    if (location) {
-      query = query.ilike('location', `%${location}%`);
-    }
-    if (filters?.max_price) {
-      query = query.lte('base_price', filters.max_price);
-    }
+    if (propertyId) {
+      const { data: property, error } = await supabase
+        .from('properties')
+        .select(baseSelect)
+        .eq('id', propertyId)
+        .maybeSingle();
 
-    const { data: properties, error } = await query;
+      if (error) throw error;
+      if (!property) {
+        return new Response(
+          JSON.stringify({ property: null }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
 
-    if (error) throw error;
+      let faqs: Array<{ question: string; answer: string }> | null = null;
 
-    const results = properties?.map(p => ({
-      name: p.name,
-      location: p.location,
-      unit_types: p.unit_types,
-      base_price: p.base_price,
-      amenities: p.amenities,
-      highlights: p.highlights,
-      availability: p.availability,
-    })) || [];
+      if (includeFaq) {
+        const { data: faqData, error: faqError } = await supabase
+          .from('property_faqs')
+          .select('question, answer')
+          .eq('property_id', property.id);
 
-    if (intent === 'faq' && name) {
-      const { data: faqs } = await supabase
-        .from('property_faqs')
-        .select('question, answer')
-        .eq('property_id', properties?.[0]?.id);
-      
+        if (faqError) throw faqError;
+        faqs = faqData ?? [];
+      }
+
       return new Response(
-        JSON.stringify({ results, faqs: faqs || [] }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          property,
+          faqs: faqs ?? undefined,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
+    let queryBuilder = supabase
+      .from('properties')
+      .select(baseSelect)
+      .order('base_price', { ascending: true })
+      .limit(20);
+
+    const searchValue = typeof query === 'string' ? query.trim() : '';
+    if (searchValue) {
+      queryBuilder = queryBuilder.or(
+        `name.ilike.%${searchValue}%,location.ilike.%${searchValue}%`,
+      );
+    }
+
+    if (filters?.location) {
+      queryBuilder = queryBuilder.ilike('location', `%${filters.location}%`);
+    }
+    if (filters?.max_budget) {
+      queryBuilder = queryBuilder.lte('base_price', filters.max_budget);
+    }
+    if (filters?.bedrooms) {
+      queryBuilder = queryBuilder.gte('bedrooms', filters.bedrooms);
+    }
+
+    const { data: properties, error } = await queryBuilder;
+    if (error) throw error;
+
     return new Response(
-      JSON.stringify({ results }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        properties: properties ?? [],
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
     console.error('Error:', error);

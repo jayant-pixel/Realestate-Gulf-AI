@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Lead, Activity } from '../types/db';
 import { X, Phone, Mail, MapPin, DollarSign, TrendingUp, Calendar, Plus, Edit2, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -175,7 +175,12 @@ export default function LeadDrawer({ lead, activities, onClose, onAddActivity, o
                   <label className="block text-xs font-medium text-gray-700 mb-1">Intent Level</label>
                   <select
                     value={editedLead.intent_level || 'medium'}
-                    onChange={(e) => setEditedLead({ ...editedLead, intent_level: e.target.value })}
+                    onChange={(e) =>
+                      setEditedLead({
+                        ...editedLead,
+                        intent_level: e.target.value as Lead['intent_level'],
+                      })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-sm"
                   >
                     <option value="low">Low</option>
@@ -187,7 +192,12 @@ export default function LeadDrawer({ lead, activities, onClose, onAddActivity, o
                   <label className="block text-xs font-medium text-gray-700 mb-1">Stage</label>
                   <select
                     value={editedLead.stage || 'New'}
-                    onChange={(e) => setEditedLead({ ...editedLead, stage: e.target.value })}
+                    onChange={(e) =>
+                      setEditedLead({
+                        ...editedLead,
+                        stage: e.target.value as Lead['stage'],
+                      })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-sm"
                   >
                     <option value="New">New</option>

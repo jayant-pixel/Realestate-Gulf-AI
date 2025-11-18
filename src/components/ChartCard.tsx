@@ -1,10 +1,10 @@
-import React from 'react';
+import { type ReactNode } from 'react';
 
 interface ChartCardProps {
   title: string;
   subtitle?: string;
-  children: React.ReactNode;
-  action?: React.ReactNode;
+  children: ReactNode;
+  action?: ReactNode;
 }
 
 export default function ChartCard({ title, subtitle, children, action }: ChartCardProps) {

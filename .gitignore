@@ -11,6 +11,10 @@ dist
 dist-ssr
 *.local
 
+.next/
+__pycache__/
+agents/secreat.env
+
 .vscode/*
 !.vscode/extensions.json
 .idea

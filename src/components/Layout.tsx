@@ -1,6 +1,9 @@
-import React from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+'use client';
+
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import type { ReactNode } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   LayoutDashboard,
   Users,
@@ -8,13 +11,13 @@ import {
   BarChart3,
   Database,
   Bot,
-  Link as LinkIcon,
   LogOut,
   Building2,
 } from 'lucide-react';
 
-export default function Layout() {
-  const location = useLocation();
+export default function Layout({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { profile, signOut } = useAuth();
 
   const navigation = [
@@ -24,13 +27,12 @@ export default function Layout() {
     { name: 'Reports', href: '/reports', icon: BarChart3 },
     { name: 'Knowledge Base', href: '/kb', icon: Database },
     { name: 'AI Avatars', href: '/avatars', icon: Bot },
-    { name: 'Public Links', href: '/links', icon: LinkIcon },
   ];
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => pathname === path;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" suppressHydrationWarning>
       <nav className="bg-white border-b border-gray-200 fixed top-0 left-0 right-0 z-40">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
@@ -50,7 +52,9 @@ export default function Layout() {
                 <p className="text-xs text-gray-600">Admin</p>
               </div>
               <button
-                onClick={signOut}
+                onClick={() => {
+                  void signOut().then(() => router.replace('/auth'));
+                }}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 title="Sign Out"
               >
@@ -70,7 +74,7 @@ export default function Layout() {
               return (
                 <Link
                   key={item.name}
-                  to={item.href}
+                  href={item.href}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                     active
                       ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
@@ -85,9 +89,7 @@ export default function Layout() {
           </nav>
         </aside>
 
-        <main className="flex-1 ml-64 p-8">
-          <Outlet />
-        </main>
+        <main className="flex-1 ml-64 p-8">{children}</main>
       </div>
     </div>
   );

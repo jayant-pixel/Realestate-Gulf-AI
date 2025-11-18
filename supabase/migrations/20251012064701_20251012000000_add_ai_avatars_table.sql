@@ -52,24 +52,54 @@ CREATE INDEX IF NOT EXISTS idx_public_links_avatar_id ON public_links(avatar_id)
 -- Enable Row Level Security
 ALTER TABLE ai_avatars ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies for ai_avatars
-CREATE POLICY "Authenticated users can read ai_avatars"
-  ON ai_avatars FOR SELECT
-  TO authenticated
-  USING (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'ai_avatars'
+      AND policyname = 'Authenticated users can read ai_avatars'
+  ) THEN
+    CREATE POLICY "Authenticated users can read ai_avatars"
+      ON ai_avatars FOR SELECT
+      TO authenticated
+      USING (true);
+  END IF;
 
-CREATE POLICY "Authenticated users can insert ai_avatars"
-  ON ai_avatars FOR INSERT
-  TO authenticated
-  WITH CHECK (true);
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'ai_avatars'
+      AND policyname = 'Authenticated users can insert ai_avatars'
+  ) THEN
+    CREATE POLICY "Authenticated users can insert ai_avatars"
+      ON ai_avatars FOR INSERT
+      TO authenticated
+      WITH CHECK (true);
+  END IF;
 
-CREATE POLICY "Authenticated users can update ai_avatars"
-  ON ai_avatars FOR UPDATE
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'ai_avatars'
+      AND policyname = 'Authenticated users can update ai_avatars'
+  ) THEN
+    CREATE POLICY "Authenticated users can update ai_avatars"
+      ON ai_avatars FOR UPDATE
+      TO authenticated
+      USING (true)
+      WITH CHECK (true);
+  END IF;
 
-CREATE POLICY "Authenticated users can delete ai_avatars"
-  ON ai_avatars FOR DELETE
-  TO authenticated
-  USING (true);
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'ai_avatars'
+      AND policyname = 'Authenticated users can delete ai_avatars'
+  ) THEN
+    CREATE POLICY "Authenticated users can delete ai_avatars"
+      ON ai_avatars FOR DELETE
+      TO authenticated
+      USING (true);
+  END IF;
+END $$;

@@ -4,19 +4,19 @@ export async function signUp(email: string, password: string, displayName: strin
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      data: {
+        display_name: displayName,
+      },
+    },
   });
 
   if (error) throw error;
   if (!data.user) throw new Error('No user returned');
 
-  const { error: profileError } = await supabase
-    .from('admin_profiles')
-    .insert({
-      user_id: data.user.id,
-      display_name: displayName,
-    });
-
-  if (profileError) throw profileError;
+  if (data.session) {
+    await upsertAdminProfile(data.user.id, displayName);
+  }
 
   return data;
 }
@@ -51,4 +51,21 @@ export async function getAdminProfile(userId: string) {
 
   if (error) throw error;
   return data;
+}
+
+export async function upsertAdminProfile(userId: string, displayName: string) {
+  const { error } = await supabase
+    .from('admin_profiles')
+    .upsert(
+      {
+        user_id: userId,
+        display_name: displayName,
+      },
+      {
+        onConflict: 'user_id',
+        ignoreDuplicates: false,
+      },
+    );
+
+  if (error) throw error;
 }

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Lead } from '../types/db';
 import { Eye } from 'lucide-react';
 
