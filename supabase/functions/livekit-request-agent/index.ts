@@ -53,6 +53,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const requestId = crypto.randomUUID();
     const body = await req.json().catch(() => ({}));
     const roomName = String((body?.room ?? "") || "").trim();
     if (!roomName) {
@@ -118,6 +119,8 @@ Deno.serve(async (req: Request) => {
     if (!existing) {
       const metadataPayload: Record<string, unknown> = {
         requestedBy: "estate-public-avatar",
+        requestId,
+        ...(body?.metadata && typeof body.metadata === "object" ? { metadata: body.metadata } : {}),
       };
       if (agentConfig) {
         metadataPayload.agentConfig = agentConfig;

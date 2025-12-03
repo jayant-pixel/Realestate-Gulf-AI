@@ -44,11 +44,17 @@ Deno.serve(async (req: Request) => {
       (requestBody.participant as string | undefined) ??
       url.searchParams.get("participant") ??
       "guest";
+    const rawMetadata =
+      requestBody.metadata ?? url.searchParams.get("metadata") ?? "";
     const metadata =
-      (requestBody.metadata as string | undefined) ??
-      url.searchParams.get("metadata") ??
-      "";
+      typeof rawMetadata === "string"
+        ? rawMetadata
+        : JSON.stringify(rawMetadata ?? {});
     const ttl = (requestBody.ttl as string | undefined) ?? "5m";
+    const region =
+      (requestBody.region as string | undefined) ??
+      url.searchParams.get("region") ??
+      undefined;
 
     const randomSuffix = crypto.randomUUID().split("-")[0];
     const identity = `${participantName}-${randomSuffix}`;
@@ -67,6 +73,9 @@ Deno.serve(async (req: Request) => {
       canPublishData: true,
       canSubscribe: true,
     };
+    if (region) {
+      grant.region = region;
+    }
 
     token.addGrant(grant);
 

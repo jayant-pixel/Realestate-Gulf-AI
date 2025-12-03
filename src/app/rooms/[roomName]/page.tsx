@@ -12,11 +12,11 @@ export default async function RoomPage({
   params,
   searchParams,
 }: {
-  params: Promise<PageParams>;
-  searchParams: Promise<SearchParams>;
+  params: PageParams;
+  searchParams: SearchParams;
 }) {
-  const { roomName } = await params;
-  const { slug } = await searchParams;
+  const { roomName } = params;
+  const { slug } = searchParams;
 
   return <EstateRoomClient roomName={roomName} slug={slug} />;
 }

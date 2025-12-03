@@ -12,6 +12,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const requestId = crypto.randomUUID();
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -21,7 +22,9 @@ Deno.serve(async (req: Request) => {
       filters,
       property_id: propertyId,
       include_faq: includeFaq,
+      overlay_id: overlayId,
     } = await req.json();
+    console.log('[estate-db-query]', requestId, { query, filters, propertyId, overlayId });
 
     const baseSelect =
       'id, name, location, base_price, amenities, unit_types, availability, highlights, hero_image, bedrooms, bathrooms, area_sqft, project_status';
@@ -57,6 +60,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           property,
           faqs: faqs ?? undefined,
+          overlayId: overlayId ?? undefined,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
@@ -84,6 +88,9 @@ Deno.serve(async (req: Request) => {
     if (filters?.bedrooms) {
       queryBuilder = queryBuilder.gte('bedrooms', filters.bedrooms);
     }
+    if (filters?.property_type) {
+      queryBuilder = queryBuilder.ilike('unit_types', `%${filters.property_type}%`);
+    }
 
     const { data: properties, error } = await queryBuilder;
     if (error) throw error;
@@ -91,11 +98,12 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         properties: properties ?? [],
+        overlayId: overlayId ?? undefined,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
-    console.error('Error:', error);
+    console.error('[estate-db-query] Error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

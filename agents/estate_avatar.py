@@ -14,8 +14,9 @@ import logging
 import os
 import secrets
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import httpx
 from dotenv import load_dotenv
@@ -24,7 +25,6 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobRequest,
-    RoomOutputOptions,
     RunContext,
     WorkerOptions,
     WorkerType,
@@ -32,9 +32,8 @@ from livekit.agents import (
 )
 from livekit.agents.llm import function_tool
 from livekit.agents.voice.room_io import RoomInputOptions
-from livekit.plugins import openai
+from livekit.plugins import google, deepgram, cartesia, silero
 from livekit.plugins.anam import avatar as anam_avatar
-from openai.types.beta.realtime.session import TurnDetection
 
 if TYPE_CHECKING:
     RunCtxParam = Optional[RunContext]
@@ -47,42 +46,47 @@ logger = logging.getLogger("estate-buddy-agent")
 logger.setLevel(logging.INFO)
 
 DEFAULT_PROMPT = os.getenv("ESTATE_AGENT_PROMPT", "").strip()
-FALLBACK_PROMPT = """# Role
-You are Estate Buddy, the always-on concierge for Gulf Estate AI. Greet every visitor, learn their goals, surface matching properties, and guide them toward a clear next action such as scheduling a tour or requesting a follow-up.
+FALLBACK_PROMPT = """
+You are Estate Buddy, the Gulf Estate AI concierge. You host visitors in a LiveKit room with an avatar voice. Keep your replies concise, confident, and focused on real properties from Supabase.
 
-# Persona
-- Speak like a confident, helpful property consultant.
-- Reference concrete facts about price, availability, amenities, and timelines.
-- Keep responses focused, acknowledge what the visitor said, and invite follow-up questions.
+Session context: {{SESSION_CONTEXT}}. If missing, ask for the visitor name. Use only Supabase-backed data and the provided tools; never rely on in-code knowledge.
 
-# Flow
-1. Welcome and confirm the visitor name when known.
-2. Ask about budget, location preferences, property type, move-in timing, and must-have features.
-3. Call `list_properties` before describing options so the carousel matches the conversation.
-4. When the visitor prefers a listing, call `show_property_detail` and narrate the highlights you see.
-5. After confirming their name plus phone or email, call `create_lead` and reassure them about follow-up.
-6. Use `log_activity` for promised brochures, tours, or custom requirements so the CRM stays current.
-7. Summarize next steps, thank the visitor, and stay available for final questions.
+Output rules:
+- Speak in short paragraphs or bullets (1–3 sentences). Use natural tone, not robotic.
+- Keep the UI in sync: whenever you surface options or details, call the relevant tool so overlays/RPCs match what you say.
+- Confirm when you capture contact info or log an action.
 
-# Tool Guidance
-- `list_properties`: Run after discovery questions or whenever the visitor asks for options. Include filters such as location, max budget, or bedrooms when available.
-- `show_property_detail`: Trigger once the visitor focuses on a specific listing and invite their feedback.
-- `create_lead`: Use only after confirming the visitor's name and a contact method.
-- `log_activity`: Record promised actions (brochures, tours, follow-ups) so the sales team stays aligned.
+Guided flow:
+1) Welcome: greet, use the visitor name if present, ask about budget, preferred locations, property type, move-in timing, and must-have amenities.
+2) List: call `list_properties` with filters before describing options; narrate 2–3 matches and invite a choice.
+3) Detail: when a property is chosen (via the visitor or RPC), call `show_property_detail` and walk through highlights, price, availability, amenities, and unit types. Offer FAQs.
+4) Commit: confirm visitor name + phone/email; then call `create_lead`. Use `log_activity` for tours/brochures/special asks.
+5) Next steps: summarize agreed actions, directions if relevant, and keep the line open.
 
-# Guardrails
-- Never invent data; if unsure, promise to verify with the sales team.
-- Avoid guarantees about pricing or discounts; stay factual and balanced.
-- Ask the visitor to repeat themselves when audio is unclear.
-- Keep the UI synchronized with the conversation by refreshing property lists when preferences change.
+Tool rules:
+- list_properties: include filters (location, budget, bedrooms/type). Always call before describing a set of options so cards align.
+- show_property_detail: call after the visitor picks a listing or sends visitor.selectProperty. Mention what you see in the detail card.
+- create_lead: only after you have full name + phone/email. Confirm the lead was created.
+- log_activity: record promised tours, brochures, follow-ups, or direction shares; mention it back to the visitor.
+
+UI sync & overlays:
+- Each tool returns overlayIds; keep responding to the same overlayId until cleared or replaced.
+- When an overlay renders, expect agent.overlayAck from the client. If not received, you may resend the overlay once.
+- Keep overlays lean: properties.menu → grid, properties.detail → hero + FAQs, directions → pickup/office directions, leads → confirmation.
+
+Guardrails:
+- Do not invent inventory, pricing, or timelines. If data is missing, say you’ll verify and log it.
+- Avoid promises/discounts. Offer ranges and next steps.
+- If speech is unclear, ask to repeat. Keep safety and professionalism.
 """
 
 TOOL_GUIDE = r"""
 # Available Tools
-- `list_properties(query, location, max_budget, bedrooms)`: Search Supabase for matching listings and update the visitor UI with property cards.
-- `show_property_detail(property_id)`: Pull expanded information for a specific property and highlight it in the UI.
-- `create_lead(full_name, email, phone, preferred_location, property_type, budget, intent_level, summary)`: Capture the visitor's contact details and create a CRM record for follow up.
-- `log_activity(lead_id, message, activity_type, due_at)`: Append internal notes or follow-up tasks tied to the most recent lead.
+- `list_properties(query, location, max_budget, bedrooms, overlay_id, context_property_id)`: Search Supabase for listings and push a properties.menu overlay + RPC payload. Include filters you know.
+- `show_property_detail(property_id, overlay_id)`: Load one listing with FAQs and push properties.detail overlay + RPC payload. Use the propertyId from the menu or visitor.selectProperty.
+- `create_lead(full_name, email, phone, preferred_location, property_type, budget, intent_level, summary)`: Create a CRM lead and emit a lead confirmation RPC.
+- `log_activity(lead_id, message, activity_type, due_at)`: Record a promised tour/brochure/note and emit a lead activity RPC.
+- `show_directions(locations, notes, overlay_id)`: Share labeled pickup/office directions with the visitor and show the overlay.
 """
 
 
@@ -91,7 +95,11 @@ class AgentConfig:
     livekit_url: str
     livekit_api_key: str
     livekit_api_secret: str
-    openai_api_key: str
+    google_api_key: str
+    google_model: str
+    deepgram_api_key: str
+    cartesia_api_key: str
+    cartesia_voice_id: str
     anam_api_key: str
     anam_avatar_id: str
     supabase_url: str
@@ -100,19 +108,22 @@ class AgentConfig:
     agent_name: str = "Estate Buddy"
     agent_identity_prefix: str = "estate-agent"
     controller_identity_prefix: str = "estate-controller"
-    openai_realtime_model: str = ""
-    openai_realtime_voice: str = ""
+    prompt_version: str = "v1"
+    prompt_updated_at: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
         livekit_url = os.getenv("LIVEKIT_URL")
         livekit_api_key = os.getenv("LIVEKIT_API_KEY")
         livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-        openai_api_key = os.getenv("OPENAI_API_KEY")
+        google_api_key = os.getenv("GOOGLE_API_KEY")
         anam_api_key = os.getenv("ANAM_API_KEY")
         supabase_url = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL")
         supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
         supabase_anon_key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY", "")
+        deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
+        cartesia_api_key = os.getenv("CARTESIA_API_KEY")
+        cartesia_voice_id = os.getenv("CARTESIA_VOICE_ID", "")
 
         missing = [
             name
@@ -120,7 +131,9 @@ class AgentConfig:
                 ("LIVEKIT_URL", livekit_url),
                 ("LIVEKIT_API_KEY", livekit_api_key),
                 ("LIVEKIT_API_SECRET", livekit_api_secret),
-                ("OPENAI_API_KEY", openai_api_key),
+                ("GOOGLE_API_KEY", google_api_key),
+                ("DEEPGRAM_API_KEY", deepgram_api_key),
+                ("CARTESIA_API_KEY", cartesia_api_key),
                 ("ANAM_API_KEY", anam_api_key),
                 ("SUPABASE_URL", supabase_url),
             ]
@@ -129,17 +142,24 @@ class AgentConfig:
         if missing:
             raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 
-        default_model_env = os.getenv("OPENAI_REALTIME_MODEL")
-        default_model = (default_model_env.strip() if default_model_env else "") or "gpt-realtime-2025-08-28"
+        default_model_env = os.getenv("GOOGLE_MODEL") or os.getenv("GOOGLE_LLM_MODEL")
+        default_model = (default_model_env.strip() if default_model_env else "") or "gemini-2.0-flash-exp"
 
-        default_voice_env = os.getenv("OPENAI_REALTIME_VOICE")
-        default_voice = (default_voice_env.strip() if default_voice_env else "") or "alloy"
+        default_voice_env = cartesia_voice_id or os.getenv("DEFAULT_CARTESIA_VOICE_ID")
+        default_voice = (default_voice_env.strip() if default_voice_env else "") or "829ccd10-f8b3-43cd-b8a0-4aeaa81f3b30"
+
+        prompt_version = (os.getenv("PROMPT_VERSION") or "v1").strip() or "v1"
+        prompt_updated_at = _clean_str(os.getenv("PROMPT_UPDATED_AT"))
 
         return cls(
             livekit_url=livekit_url,
             livekit_api_key=livekit_api_key,
             livekit_api_secret=livekit_api_secret,
-            openai_api_key=openai_api_key,
+            google_api_key=google_api_key,
+            google_model=default_model,
+            deepgram_api_key=deepgram_api_key,
+            cartesia_api_key=cartesia_api_key,
+            cartesia_voice_id=default_voice,
             anam_api_key=anam_api_key,
             anam_avatar_id=os.getenv("ANAM_AVATAR_ID", ""),
             supabase_url=supabase_url,
@@ -148,8 +168,8 @@ class AgentConfig:
             agent_name=os.getenv("AGENT_NAME", "Estate Buddy"),
             agent_identity_prefix=os.getenv("AGENT_IDENTITY_PREFIX", "estate-agent"),
             controller_identity_prefix=os.getenv("CONTROLLER_IDENTITY_PREFIX", "estate-controller"),
-            openai_realtime_model=default_model,
-            openai_realtime_voice=default_voice,
+            prompt_version=prompt_version,
+            prompt_updated_at=prompt_updated_at,
         )
 
     def with_session_overrides(self, overrides: Dict[str, Any]) -> "AgentConfig":
@@ -169,22 +189,32 @@ class AgentConfig:
         controller_identity_prefix = (
             _string_override("controllerIdentityPrefix") or self.controller_identity_prefix
         )
-        model_override = _string_override("openaiRealtimeModel", "openaiModel", "model")
-        openai_realtime_model = model_override or self.openai_realtime_model
+        model_override = _string_override("googleModel", "openaiRealtimeModel", "openaiModel", "model")
+        if model_override and "gemini" not in model_override.lower():
+            model_override = None  # ignore incompatible model strings
+        google_model = model_override or self.google_model
 
-        voice_override = _string_override("openaiVoice", "openaiRealtimeVoice", "voice")
-        openai_realtime_voice = voice_override or self.openai_realtime_voice
+        voice_override = _string_override("cartesiaVoiceId", "voice", "openaiVoice", "openaiRealtimeVoice")
+        if voice_override and "-" not in voice_override:
+            voice_override = None  # avoid invalid Cartesia voices from legacy overrides
+        cartesia_voice_id = voice_override or self.cartesia_voice_id
 
         anam_avatar_id = (
             _string_override("anamAvatarId", "anam_avatar_id", "avatarId", "avatarID") or self.anam_avatar_id
         )
         agent_name = _string_override("avatarName", "agentDisplayName") or agent_name
+        prompt_version = _string_override("promptVersion") or self.prompt_version
+        prompt_updated_at = _string_override("promptUpdatedAt") or self.prompt_updated_at
 
         return AgentConfig(
             livekit_url=self.livekit_url,
             livekit_api_key=self.livekit_api_key,
             livekit_api_secret=self.livekit_api_secret,
-            openai_api_key=self.openai_api_key,
+            google_api_key=self.google_api_key,
+            google_model=google_model,
+            deepgram_api_key=self.deepgram_api_key,
+            cartesia_api_key=self.cartesia_api_key,
+            cartesia_voice_id=cartesia_voice_id,
             anam_api_key=self.anam_api_key,
             anam_avatar_id=anam_avatar_id,
             supabase_url=self.supabase_url,
@@ -193,8 +223,8 @@ class AgentConfig:
             agent_name=agent_name,
             agent_identity_prefix=agent_identity_prefix,
             controller_identity_prefix=controller_identity_prefix,
-            openai_realtime_model=openai_realtime_model,
-            openai_realtime_voice=openai_realtime_voice,
+            prompt_version=prompt_version,
+            prompt_updated_at=prompt_updated_at,
         )
 
     def agent_identity(self, job_id: Optional[str]) -> str:
@@ -212,8 +242,10 @@ class AgentConfig:
             "agentName": self.agent_name,
             "agentType": "avatar",
             "avatarId": self.anam_avatar_id,
-            "openaiModel": self.openai_realtime_model,
-            "openaiVoice": self.openai_realtime_voice,
+            "googleModel": self.google_model,
+            "cartesiaVoiceId": self.cartesia_voice_id,
+            "promptVersion": self.prompt_version,
+            "promptUpdatedAt": self.prompt_updated_at,
         }
 
 
@@ -253,7 +285,9 @@ def _extract_session_overrides(raw: Optional[str]) -> Dict[str, Any]:
     return overrides
 
 
-def build_agent_instructions(base_prompt: str) -> str:
+def build_agent_instructions(
+    base_prompt: str, config: AgentConfig, session_overrides: Optional[Dict[str, Any]]
+) -> str:
     prompt_body = (base_prompt or DEFAULT_PROMPT or "").strip()
     if not prompt_body:
         prompt_body = FALLBACK_PROMPT
@@ -265,13 +299,34 @@ def build_agent_instructions(base_prompt: str) -> str:
         )
         if normalized_tools not in normalized_body:
             prompt_body = f"{prompt_body.rstrip()}\n\n{tool_section}\n"
-    return prompt_body
+    meta_lines: List[str] = [
+        f"[prompt_version::{config.prompt_version}]",
+    ]
+    if config.prompt_updated_at:
+        meta_lines.append(f"[prompt_updated_at::{config.prompt_updated_at}]")
+    if session_overrides:
+        model_meta = _string_override("googleModel", "model", "openaiModel", "openaiRealtimeModel")
+        voice_meta = _string_override("cartesiaVoiceId", "voice", "openaiVoice", "openaiRealtimeVoice")
+        agent_name_meta = _string_override("agentName", "avatarName")
+        for key, val in (("agentName", agent_name_meta), ("googleModel", model_meta), ("cartesiaVoiceId", voice_meta)):
+            if val:
+                meta_lines.append(f"[session::{key}::{val}]")
+    metadata_header = "\n".join(meta_lines)
+    return f"{metadata_header}\n{prompt_body}"
 
 
 class EstateTools:
     def __init__(self, config: AgentConfig, room: RunCtxParam) -> None:
         self.config = config
         self.room = room
+        self.unacked_overlays: set[str] = set()  # TODO: Phase 3 - replay if acks are missing on reconnect
+        self.last_overlay_id: Optional[str] = None
+        self.last_menu_overlay: Optional[Dict[str, Any]] = None
+        self.last_detail_overlay: Optional[Dict[str, Any]] = None
+
+    def register_ack(self, overlay_id: Optional[str]) -> None:
+        if overlay_id:
+            self.unacked_overlays.discard(overlay_id)
 
     async def _call_supabase_function(self, fn_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         headers = {
@@ -291,6 +346,14 @@ class EstateTools:
         if not self.room or not getattr(self.room, "local_participant", None):
             logger.debug("Room participant not ready; skipping overlay event %s", kind)
             return
+        overlay_id = payload.get("overlayId") or f"ovr-{secrets.token_hex(4)}"
+        payload["overlayId"] = overlay_id
+        self.unacked_overlays.add(overlay_id)
+        if kind.startswith("properties.menu"):
+            self.last_menu_overlay = {"kind": kind, **payload}
+        if kind.startswith("properties.detail"):
+            self.last_detail_overlay = {"kind": kind, **payload}
+        self.last_overlay_id = overlay_id
         message = json.dumps(
             {
                 "type": "ui.overlay",
@@ -302,6 +365,12 @@ class EstateTools:
         ).encode("utf-8")
         await self.room.local_participant.publish_data(message, topic="ui.overlay", reliable=True)
 
+    async def _publish_rpc(self, topic: str, payload: Dict[str, Any]) -> None:
+        if not self.room or not getattr(self.room, "local_participant", None):
+            return
+        message = json.dumps({"type": topic, "payload": payload}).encode("utf-8")
+        await self.room.local_participant.publish_data(message, topic=topic, reliable=True)
+
     @function_tool(
         name="list_properties",
         description="Search for available properties and update the visitor UI with menu cards.",
@@ -312,7 +381,10 @@ class EstateTools:
         location: Optional[str] = None,
         max_budget: Optional[float] = None,
         bedrooms: Optional[int] = None,
+        overlay_id: Optional[str] = None,
+        context_property_id: Optional[str] = None,
     ) -> str:
+        overlay_id = overlay_id or f"ovr-{secrets.token_hex(4)}"
         payload = {
             "query": query or "",
             "filters": {
@@ -320,6 +392,8 @@ class EstateTools:
                 "max_budget": max_budget,
                 "bedrooms": bedrooms,
             },
+            "context_property_id": context_property_id,
+            "overlay_id": overlay_id,
         }
         result = await self._call_supabase_function("estate-db-query", payload)
         properties = result.get("properties") or result.get("results") or result.get("data") or []
@@ -335,13 +409,16 @@ class EstateTools:
                     price_value = None
             card = {
                 "id": prop.get("id"),
+                "name": prop.get("name"),
                 "title": prop.get("name"),
                 "subtitle": prop.get("location"),
+                "location": prop.get("location"),
                 "price": price_value,
                 "amenities": prop.get("amenities", []),
                 "highlights": prop.get("highlights"),
                 "availability": prop.get("availability"),
-                "media": prop.get("hero_image"),
+                "hero_image": prop.get("hero_image"),
+                "unit_types": prop.get("unit_types"),
             }
             cards.append(card)
             if isinstance(price_value, (int, float)):
@@ -358,6 +435,18 @@ class EstateTools:
                 "query": query,
                 "location": location,
                 "maxBudget": max_budget,
+                "filters": payload["filters"],
+                "overlayId": overlay_id,
+            },
+        )
+        await self._publish_rpc(
+            "client.properties",
+            {
+                "action": "menu",
+                "overlayId": overlay_id,
+                "items": cards,
+                "filters": payload["filters"],
+                "query": query,
             },
         )
 
@@ -373,17 +462,28 @@ class EstateTools:
         name="show_property_detail",
         description="Showcase a single property with detailed information in the visitor UI.",
     )
-    async def show_property_detail(self, property_id: str) -> str:
+    async def show_property_detail(self, property_id: str, overlay_id: Optional[str] = None) -> str:
         if not property_id:
             return "Property detail not shown because no property_id was provided."
+        overlay_id = overlay_id or f"ovr-{secrets.token_hex(4)}"
         result = await self._call_supabase_function(
-            "estate-db-query", {"property_id": property_id, "include_faq": True}
+            "estate-db-query", {"property_id": property_id, "include_faq": True, "overlay_id": overlay_id}
         )
         detail = result.get("property") or result.get("data") or {}
+        faqs = result.get("faqs") or detail.get("faqs")
         if not detail:
             return "Unable to load that property right now."
 
-        await self._publish_overlay("properties.detail", {"property": detail})
+        await self._publish_overlay("properties.detail", {"property": detail, "faqs": faqs, "overlayId": overlay_id})
+        await self._publish_rpc(
+            "client.properties",
+            {
+                "action": "detail",
+                "overlayId": overlay_id,
+                "item": detail,
+                "faqs": faqs,
+            },
+        )
         highlights = detail.get("highlights") or ""
         price = detail.get("base_price")
         price_str = f" at ${price:,.0f}" if isinstance(price, (int, float)) else ""
@@ -404,10 +504,12 @@ class EstateTools:
         intent_level: Optional[str] = None,
         summary: Optional[str] = None,
         conversion_probability: Optional[float] = None,
+        overlay_id: Optional[str] = None,
     ) -> str:
         if not full_name or (not email and not phone):
             return "Lead not created. Make sure you have a name plus phone or email before calling this tool."
 
+        overlay_id = overlay_id or f"lead-{secrets.token_hex(4)}"
         payload = {
             "full_name": full_name,
             "email": email,
@@ -432,6 +534,18 @@ class EstateTools:
                 "phone": phone,
                 "preferredLocation": preferred_location,
                 "propertyType": property_type,
+                "overlayId": overlay_id,
+            },
+        )
+        await self._publish_rpc(
+            "client.leads",
+            {
+                "action": "created",
+                "overlayId": overlay_id,
+                "leadId": lead_id,
+                "fullName": full_name,
+                "email": email,
+                "phone": phone,
             },
         )
         return (
@@ -448,7 +562,9 @@ class EstateTools:
         message: str,
         activity_type: str = "note",
         due_at: Optional[str] = None,
+        overlay_id: Optional[str] = None,
     ) -> str:
+        overlay_id = overlay_id or f"lead-{secrets.token_hex(4)}"
         payload = {
             "lead_id": lead_id,
             "type": (activity_type or "note").lower(),
@@ -464,9 +580,51 @@ class EstateTools:
                 "message": message,
                 "type": activity_type,
                 "dueAt": due_at,
+                "overlayId": overlay_id,
+            },
+        )
+        await self._publish_rpc(
+            "client.leads",
+            {
+                "action": "activity",
+                "leadId": lead_id,
+                "message": message,
+                "type": activity_type,
+                "overlayId": overlay_id,
             },
         )
         return "Activity captured. Let the visitor know their preference is on file."
+
+    @function_tool(
+        name="show_directions",
+        description="Share driving or pickup directions with the visitor. Provide one or more labeled locations.",
+    )
+    async def show_directions(
+        self,
+        locations: Optional[List[Dict[str, Any]]] = None,
+        notes: Optional[str] = None,
+        overlay_id: Optional[str] = None,
+    ) -> str:
+        overlay_id = overlay_id or f"dir-{secrets.token_hex(4)}"
+        clean_locations = locations or []
+        await self._publish_overlay(
+            "directions.show",
+            {
+                "overlayId": overlay_id,
+                "locations": clean_locations,
+                "notes": notes,
+            },
+        )
+        await self._publish_rpc(
+            "client.directions",
+            {
+                "action": "show",
+                "overlayId": overlay_id,
+                "locations": clean_locations,
+                "notes": notes,
+            },
+        )
+        return "Shared directions with the visitor and updated the overlay."
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -534,26 +692,23 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.wait_for_participant()
     logger.info("Participant joined. Starting avatar session as %s", agent_identity)
 
-    llm = openai.realtime.RealtimeModel(
-        api_key=config.openai_api_key,
-        model=config.openai_realtime_model,
-        voice=config.openai_realtime_voice,
-        temperature=0.7,
-        modalities=["text", "audio"],
-        turn_detection=TurnDetection(
-            type="server_vad",
-            threshold=0.5,
-            prefix_padding_ms=400,
-            silence_duration_ms=400,
-            create_response=True,
-            interrupt_response=True,
-        ),
+    stt = deepgram.STT(model="nova-3", api_key=config.deepgram_api_key)
+    vad = silero.VAD.load()
+    llm = google.LLM(
+        model=config.google_model,
+        api_key=config.google_api_key,
+    )
+    tts = cartesia.TTS(
+        model="sonic-3",
+        voice=config.cartesia_voice_id,
+        api_key=config.cartesia_api_key,
     )
 
     session = AgentSession(
+        stt=stt,
+        vad=vad,
         llm=llm,
-        resume_false_interruption=False,
-        use_tts_aligned_transcript=True,
+        tts=tts,
     )
 
     avatar_session = anam_avatar.AvatarSession(
@@ -608,6 +763,67 @@ async def entrypoint(ctx: JobContext) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.debug("Failed to capture transcription payload: %s", exc)
 
+    @ctx.room.on("data_received")
+    def _on_data_received(payload, participant, kind, topic):  # noqa: ANN001
+        if estate_tools is None:
+            return
+        try:
+            decoded = payload.decode("utf-8")
+            message = json.loads(decoded)
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to decode data payload from %s", getattr(participant, "identity", "unknown"))
+            return
+
+        event_type = message.get("type") or topic or ""
+        data = message.get("payload") or {}
+        overlay_id = data.get("overlayId") if isinstance(data, dict) else None
+
+        if event_type == "agent.overlayAck":
+            estate_tools.register_ack(overlay_id)
+            return
+
+        async def _handle() -> None:
+            if event_type == "visitor.selectProperty":
+                property_id = data.get("propertyId") if isinstance(data, dict) else None
+                if property_id:
+                    await estate_tools.show_property_detail(str(property_id), overlay_id=overlay_id)
+            elif event_type == "visitor.requestTour":
+                await estate_tools.log_activity(
+                    lead_id=data.get("leadId") if isinstance(data, dict) else None,
+                    message="Visitor requested a tour",
+                    activity_type="tour",
+                    overlay_id=overlay_id,
+                )
+            elif event_type == "visitor.requestBrochure":
+                await estate_tools.log_activity(
+                    lead_id=data.get("leadId") if isinstance(data, dict) else None,
+                    message="Visitor requested a brochure",
+                    activity_type="brochure",
+                    overlay_id=overlay_id,
+                )
+            elif event_type == "visitor.shareContact":
+                payload_data = data if isinstance(data, dict) else {}
+                full_name = payload_data.get("fullName")
+                phone = payload_data.get("phone")
+                email = payload_data.get("email")
+                if full_name and (phone or email):
+                    await estate_tools.create_lead(
+                        full_name=full_name,
+                        phone=phone,
+                        email=email,
+                        summary="Visitor shared contact details from overlay CTA",
+                        overlay_id=overlay_id,
+                    )
+                else:
+                    await estate_tools.log_activity(
+                        lead_id=payload_data.get("leadId"),
+                        message="Visitor attempted to share contact without full details",
+                        activity_type="note",
+                        overlay_id=overlay_id,
+                    )
+
+        asyncio.create_task(_handle())
+
     @ctx.room.on("participant_disconnected")
     def _on_participant_disconnected(participant):  # noqa: ANN001
         identity = getattr(participant, "identity", "") or ""
@@ -619,12 +835,18 @@ async def entrypoint(ctx: JobContext) -> None:
         asyncio.create_task(_submit_conversation_summary())
 
     instructions_source = system_prompt_override or DEFAULT_PROMPT or FALLBACK_PROMPT
-    instructions = build_agent_instructions(instructions_source)
+    instructions = build_agent_instructions(instructions_source, config, session_overrides)
+    session_context = {
+        "visitorName": visitor_name,
+        "linkConfig": session_overrides,
+        "room": getattr(ctx.room, "name", None),
+    }
+    instructions = f"{instructions}\n\n[SESSION_CONTEXT]\n{json.dumps(session_context, default=str)}\n"
 
     logger.info(
-        "Configured realtime session with model=%s voice=%s avatar=%s",
-        config.openai_realtime_model,
-        config.openai_realtime_voice,
+        "Configured session with gemini=%s cartesia_voice=%s avatar=%s",
+        config.google_model,
+        config.cartesia_voice_id,
         config.anam_avatar_id or "<default>",
     )
 
@@ -636,14 +858,14 @@ async def entrypoint(ctx: JobContext) -> None:
                 estate_tools.show_property_detail,
                 estate_tools.create_lead,
                 estate_tools.log_activity,
+                estate_tools.show_directions,
             ],
         )
 
         await session.start(
             agent=agent,
             room=ctx.room,
-            room_input_options=RoomInputOptions(video_enabled=False, close_on_disconnect=False),
-            room_output_options=RoomOutputOptions(audio_enabled=True),
+            room_input_options=RoomInputOptions(audio_enabled=True, video_enabled=False, close_on_disconnect=False),
         )
         logger.info("Agent session started; awaiting realtime events")
 

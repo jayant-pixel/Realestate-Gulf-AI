@@ -1,12 +1,19 @@
 'use client';
 
-import Image from 'next/image';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RoomEvent } from 'livekit-client';
 import { useRoomContext } from '@livekit/components-react';
 
 import type { AIAvatar, PublicLink } from '@/types/db';
 import type { PropertyDetail, PropertyMenuItem } from '@/components/PropertyShowcase';
+import {
+  type ClientDirectionsRPC,
+  type ClientLeadsRPC,
+  type ClientPropertiesRPC,
+  type OverlayPayload,
+  type VisitorRPCPayload,
+} from '@/types/livekit';
+import PropertyShowcase from '@/components/PropertyShowcase';
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
@@ -40,6 +47,19 @@ export default function EstateOverlay({ visitorName, roomName, link, avatar }: E
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>();
   const [propertyDetail, setPropertyDetail] = useState<PropertyDetail | null>(null);
   const [leadStatus, setLeadStatus] = useState<string | null>(null);
+  const [directions, setDirections] = useState<ClientDirectionsRPC | null>(null);
+  const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const [ctaBusy, setCtaBusy] = useState(false);
+  const lastOverlayIdRef = useRef<string>();
+  const menuCacheRef = useRef<PropertyMenuItem[]>([]);
+  const detailCacheRef = useRef<PropertyDetail | null>(null);
+  const directionsCacheRef = useRef<ClientDirectionsRPC | null>(null);
+
+  useEffect(() => {
+    if (!statusBanner) return;
+    const timer = window.setTimeout(() => setStatusBanner(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [statusBanner]);
 
   const appendTimeline = useCallback((role: TimelineRole, text: string) => {
     if (!text) return;
@@ -59,11 +79,11 @@ export default function EstateOverlay({ visitorName, roomName, link, avatar }: E
   }, []);
 
   const sendVisitorEvent = useCallback(
-    (payload: Record<string, unknown>, topic = 'visitor') => {
+    (message: VisitorRPCPayload) => {
       if (!room) return;
       try {
-        const encoded = encoder.encode(JSON.stringify(payload));
-        room.localParticipant?.publishData(encoded, { reliable: true, topic });
+        const encoded = encoder.encode(JSON.stringify(message));
+        room.localParticipant?.publishData(encoded, { reliable: true, topic: message.type });
       } catch (err) {
         console.warn('[EstateOverlay] Failed to publish visitor event', err);
       }
@@ -71,11 +91,145 @@ export default function EstateOverlay({ visitorName, roomName, link, avatar }: E
     [room],
   );
 
+  const sendOverlayAck = useCallback(
+    (overlayId?: string, status: 'rendered' | 'cleared' = 'rendered') => {
+      if (!overlayId) return;
+      sendVisitorEvent({ type: 'agent.overlayAck', payload: { overlayId, status } });
+    },
+    [sendVisitorEvent],
+  );
+
   useEffect(() => {
     if (!room) return;
 
+    const replayCached = () => {
+      if (menuCacheRef.current.length) {
+        setMenuItems(menuCacheRef.current);
+      }
+      if (detailCacheRef.current) {
+        setPropertyDetail(detailCacheRef.current);
+      }
+      if (directionsCacheRef.current) {
+        setDirections(directionsCacheRef.current);
+      }
+      if (lastOverlayIdRef.current) {
+        sendOverlayAck(lastOverlayIdRef.current, 'rendered');
+      }
+    };
+
     const handleConnected = () => {
       appendTimeline('system', "You're connected. Estate Buddy is listening.");
+      replayCached();
+    };
+
+    const applyOverlayPayload = (overlay: OverlayPayload) => {
+      const kind = overlay.kind;
+      if (overlay.overlayId) {
+        lastOverlayIdRef.current = overlay.overlayId;
+      }
+      if (kind === 'properties.menu') {
+        const items = Array.isArray(overlay.items) ? (overlay.items as PropertyMenuItem[]) : [];
+        setMenuItems(items);
+        menuCacheRef.current = items;
+        if (items.length > 0) {
+          appendTimeline(
+            'system',
+            `Showing ${items.length} property option${items.length === 1 ? '' : 's'} on the showcase panel.`,
+          );
+        }
+        sendOverlayAck(overlay.overlayId);
+        return;
+      }
+      if (kind === 'properties.detail') {
+        const detailRecord = (overlay.property ?? overlay.item) as PropertyDetail | undefined;
+        if (detailRecord) {
+          setPropertyDetail(detailRecord);
+          detailCacheRef.current = detailRecord;
+          if (detailRecord.id) {
+            setSelectedPropertyId(String(detailRecord.id));
+          }
+        }
+        sendOverlayAck(overlay.overlayId);
+        return;
+      }
+      if (kind === 'directions.show') {
+        const payload: ClientDirectionsRPC = {
+          action: 'show',
+          overlayId: overlay.overlayId,
+          locations: overlay.locations,
+        };
+        setDirections(payload);
+        directionsCacheRef.current = payload;
+        sendOverlayAck(overlay.overlayId);
+        return;
+      }
+      if (kind === 'directions.clear') {
+        setDirections(null);
+        directionsCacheRef.current = null;
+        sendOverlayAck(overlay.overlayId, 'cleared');
+        return;
+      }
+      if (kind === 'leads.created') {
+        setLeadStatus('Lead captured');
+        setStatusBanner(`Lead captured for ${overlay.fullName ?? 'visitor'}`);
+        appendTimeline('system', `Lead captured for ${overlay.fullName ?? 'visitor'}.`);
+        sendOverlayAck(overlay.overlayId);
+        return;
+      }
+      if (kind === 'leads.activity') {
+        if (overlay.message) {
+          appendTimeline('system', String(overlay.message));
+        }
+        sendOverlayAck(overlay.overlayId);
+      }
+    };
+
+    const handleClientProperties = (payload: ClientPropertiesRPC) => {
+      if (payload.action === 'menu') {
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        setMenuItems(items);
+        menuCacheRef.current = items;
+        if (payload.overlayId) {
+          lastOverlayIdRef.current = payload.overlayId;
+          sendOverlayAck(payload.overlayId);
+        }
+      } else if (payload.action === 'detail') {
+        const detailRecord = payload.item as PropertyDetail;
+        setPropertyDetail(detailRecord);
+        detailCacheRef.current = detailRecord;
+        if (payload.overlayId) {
+          lastOverlayIdRef.current = payload.overlayId;
+          sendOverlayAck(payload.overlayId);
+        }
+        if (detailRecord?.id) {
+          setSelectedPropertyId(String(detailRecord.id));
+        }
+      }
+    };
+
+    const handleClientLeads = (payload: ClientLeadsRPC) => {
+      if (payload.action === 'created') {
+        setLeadStatus('Lead captured');
+        setStatusBanner(`Lead created for ${payload.fullName ?? 'visitor'}`);
+        appendTimeline('system', `Lead captured for ${payload.fullName ?? 'visitor'}.`);
+        sendOverlayAck(payload.overlayId);
+      }
+      if (payload.action === 'activity' && payload.message) {
+        appendTimeline('system', payload.message);
+        sendOverlayAck(payload.overlayId);
+      }
+    };
+
+    const handleDirections = (payload: ClientDirectionsRPC) => {
+      if (payload.action === 'clear') {
+        setDirections(null);
+        directionsCacheRef.current = null;
+        sendOverlayAck(payload.overlayId, 'cleared');
+      } else {
+        setDirections(payload);
+        directionsCacheRef.current = payload;
+        sendOverlayAck(payload.overlayId);
+      }
     };
 
     const handleData = (
@@ -97,80 +251,105 @@ export default function EstateOverlay({ visitorName, roomName, link, avatar }: E
       const data = message.payload ?? {};
 
       if (topic === 'ui.overlay' || message.type === 'ui.overlay') {
-        const kind = String((message.payload as { kind?: string } | undefined)?.kind ?? '');
-        if (!kind) return;
-        if (kind === 'properties.menu') {
-          const items = Array.isArray(data.items) ? (data.items as PropertyMenuItem[]) : [];
-          setMenuItems(items);
-          if (items.length > 0) {
-            appendTimeline(
-              'system',
-              `Showing ${items.length} property option${items.length === 1 ? '' : 's'} on the showcase panel.`,
-            );
-          }
-          return;
-        }
-        if (kind === 'properties.detail') {
-          const detailRecord = (data.property ?? data.detail) as PropertyDetail | undefined;
-          if (detailRecord) {
-            setPropertyDetail(detailRecord);
-            if (detailRecord.id) {
-              setSelectedPropertyId(String(detailRecord.id));
-            }
-          }
-          return;
-        }
-        if (kind === 'leads.created' && data.fullName) {
-          appendTimeline('system', `Lead captured for ${String(data.fullName)}.`);
-          setLeadStatus('Lead captured');
-          return;
-        }
-        if (kind === 'leads.activity' && data.message) {
-          appendTimeline('system', String(data.message));
-          return;
-        }
+        applyOverlayPayload(data as OverlayPayload);
+        return;
+      }
+
+      if (message.type === 'client.properties') {
+        handleClientProperties(data as ClientPropertiesRPC);
+        return;
+      }
+
+      if (message.type === 'client.leads') {
+        handleClientLeads(data as ClientLeadsRPC);
+        return;
+      }
+
+      if (message.type === 'client.directions') {
+        handleDirections(data as ClientDirectionsRPC);
         return;
       }
 
       if (message.type === 'agent.message') {
-        appendTimeline('agent', String(data.text ?? data.message ?? ''));
+        appendTimeline('agent', String((data as { text?: string; message?: string }).text ?? (data as { message?: string }).message ?? ''));
         return;
       }
 
       if (message.type === 'visitor.message') {
-        appendTimeline('visitor', String(data.text ?? ''));
+        appendTimeline('visitor', String((data as { text?: string }).text ?? ''));
         return;
       }
 
       if (message.type === 'system.notice' || message.type === 'system.message') {
-        appendTimeline('system', String(data.text ?? ''));
-        return;
+        appendTimeline('system', String((data as { text?: string }).text ?? ''));
       }
     };
 
     room.on(RoomEvent.Connected, handleConnected);
+    room.on(RoomEvent.Reconnected, replayCached);
     room.on(RoomEvent.DataReceived, handleData);
 
     return () => {
       room.off(RoomEvent.Connected, handleConnected);
+      room.off(RoomEvent.Reconnected, replayCached);
       room.off(RoomEvent.DataReceived, handleData);
     };
-  }, [appendTimeline, room]);
+  }, [appendTimeline, room, sendOverlayAck]);
 
   const handleSelectProperty = useCallback(
     (propertyId: string) => {
       setSelectedPropertyId(propertyId);
       sendVisitorEvent({
         type: 'visitor.selectProperty',
-        payload: { propertyId },
+        payload: { propertyId, overlayId: lastOverlayIdRef.current },
       });
     },
     [sendVisitorEvent],
   );
 
+  const handleRequestTour = useCallback(
+    (propertyId?: string) => {
+      setCtaBusy(true);
+      sendVisitorEvent({
+        type: 'visitor.requestTour',
+        payload: { propertyId, overlayId: lastOverlayIdRef.current },
+      });
+      setStatusBanner('Tour requested. We will confirm availability shortly.');
+      setTimeout(() => setCtaBusy(false), 1200);
+    },
+    [sendVisitorEvent],
+  );
+
+  const handleRequestBrochure = useCallback(
+    (propertyId?: string) => {
+      setCtaBusy(true);
+      sendVisitorEvent({
+        type: 'visitor.requestBrochure',
+        payload: { propertyId, overlayId: lastOverlayIdRef.current },
+      });
+      setStatusBanner('Brochure request sent to the agent.');
+      setTimeout(() => setCtaBusy(false), 1200);
+    },
+    [sendVisitorEvent],
+  );
+
+  const handleShareContact = useCallback(
+    (propertyId?: string) => {
+      setCtaBusy(true);
+      const fullName = visitorName || 'Visitor';
+      sendVisitorEvent({
+        type: 'visitor.shareContact',
+        payload: { fullName, overlayId: lastOverlayIdRef.current, propertyId },
+      });
+      setStatusBanner('Sharing your contact with the agent…');
+      setTimeout(() => setCtaBusy(false), 1200);
+    },
+    [sendVisitorEvent, visitorName],
+  );
+
   const hasOverlayContent = useMemo(() => {
-    return menuItems.length > 0 || Boolean(propertyDetail) || Boolean(leadStatus);
-  }, [leadStatus, menuItems.length, propertyDetail]);
+    return menuItems.length > 0 || Boolean(propertyDetail) || Boolean(leadStatus) || Boolean(directions);
+  }, [directions, leadStatus, menuItems.length, propertyDetail]);
 
   if (!hasOverlayContent) {
     return null;
@@ -178,6 +357,11 @@ export default function EstateOverlay({ visitorName, roomName, link, avatar }: E
 
   return (
     <div className="estate-overlay">
+      {statusBanner ? (
+        <div className="mb-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow">
+          {statusBanner}
+        </div>
+      ) : null}
       <div className="estate-overlay__card">
         <header className="estate-overlay__header">
           <div>
@@ -195,6 +379,20 @@ export default function EstateOverlay({ visitorName, roomName, link, avatar }: E
         </header>
 
         <div className="estate-overlay__content">
+          <section className="estate-overlay__properties">
+            <h3 className="estate-overlay__section-title">Featured Properties</h3>
+            <PropertyShowcase
+              menuItems={menuItems}
+              selectedPropertyId={selectedPropertyId}
+              detail={propertyDetail}
+              onSelect={handleSelectProperty}
+              onRequestTour={handleRequestTour}
+              onRequestBrochure={handleRequestBrochure}
+              onShareContact={handleShareContact}
+              ctaDisabled={ctaBusy}
+            />
+          </section>
+
           <section className="estate-overlay__conversation" aria-live="polite">
             <h3 className="estate-overlay__section-title">Conversation</h3>
             {timeline.length === 0 ? (
@@ -217,125 +415,23 @@ export default function EstateOverlay({ visitorName, roomName, link, avatar }: E
                 ))}
               </ul>
             )}
-          </section>
 
-          <section className="estate-overlay__properties">
-            <h3 className="estate-overlay__section-title">Featured Properties</h3>
-            <EstatePropertyPanel
-              menuItems={menuItems}
-              selectedPropertyId={selectedPropertyId}
-              propertyDetail={propertyDetail}
-              onSelect={handleSelectProperty}
-            />
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EstatePropertyPanel({
-  menuItems,
-  selectedPropertyId,
-  propertyDetail,
-  onSelect,
-}: {
-  menuItems: PropertyMenuItem[];
-  selectedPropertyId?: string;
-  propertyDetail: PropertyDetail | null;
-  onSelect: (propertyId: string) => void;
-}) {
-  if (menuItems.length === 0 && !propertyDetail) {
-    return (
-      <div className="estate-overlay__placeholder">
-        Ask Estate Buddy about available listings to see curated options here.
-      </div>
-    );
-  }
-
-  return (
-    <div className="estate-property-panel">
-      <aside className="estate-property-panel__menu">
-        {menuItems.map((item, index) => {
-          const hasId = item.id !== undefined && item.id !== null && item.id !== '';
-          const propertyId = hasId ? String(item.id) : '';
-          const key = hasId ? propertyId : String(item.title ?? index);
-          const isActive = hasId && selectedPropertyId === propertyId;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => hasId && onSelect(propertyId)}
-              disabled={!hasId}
-              className={`estate-property-panel__menu-item${isActive ? ' estate-property-panel__menu-item--active' : ''}`}
-            >
-              <span className="estate-property-panel__menu-title">{item.title ?? 'Listing'}</span>
-              {item.subtitle ? (
-                <span className="estate-property-panel__menu-subtitle">{item.subtitle}</span>
-              ) : null}
-              {typeof item.price === 'number' ? (
-                <span className="estate-property-panel__menu-price">${item.price.toLocaleString()}</span>
-              ) : null}
-            </button>
-          );
-        })}
-      </aside>
-
-      <div className="estate-property-panel__detail">
-        {propertyDetail ? (
-          <div className="estate-property-card">
-            {propertyDetail.hero_image ? (
-              <div className="estate-property-card__hero">
-                <Image
-                  src={propertyDetail.hero_image}
-                  alt={propertyDetail.name ?? 'Property hero'}
-                  fill
-                  sizes="(min-width: 768px) 600px, 100vw"
-                  className="estate-property-card__hero-image"
-                />
+            {directions?.locations && directions.locations.length > 0 ? (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-slate-800">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.3em] text-blue-500">Directions</p>
+                <ul className="space-y-2">
+                  {directions.locations.map((location) => (
+                    <li key={`${location.label}-${location.address ?? ''}`} className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
+                      <p className="font-semibold text-slate-900">{location.label}</p>
+                      {location.address ? <p className="text-xs text-slate-600">{location.address}</p> : null}
+                      {location.notes ? <p className="text-xs text-slate-500">{location.notes}</p> : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
-            <div className="estate-property-card__body">
-              <h4 className="estate-property-card__title">{propertyDetail.name ?? 'Featured property'}</h4>
-              {propertyDetail.location ? (
-                <p className="estate-property-card__location">{propertyDetail.location}</p>
-              ) : null}
-              {typeof propertyDetail.base_price === 'number' ? (
-                <p className="estate-property-card__price">Starting ${propertyDetail.base_price.toLocaleString()}</p>
-              ) : null}
-              {propertyDetail.highlights ? (
-                <p className="estate-property-card__highlights">{propertyDetail.highlights}</p>
-              ) : null}
-
-              {Array.isArray(propertyDetail.amenities) && propertyDetail.amenities.length > 0 ? (
-                <div className="estate-property-card__amenities">
-                  {propertyDetail.amenities.slice(0, 6).map((amenity) => (
-                    <span key={amenity} className="estate-property-card__chip">
-                      {amenity}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-
-              {Array.isArray(propertyDetail.unit_types) && propertyDetail.unit_types.length > 0 ? (
-                <div className="estate-property-card__units">
-                  <span className="estate-property-card__units-label">Available Units:</span>
-                  <div className="estate-property-card__units-list">
-                    {propertyDetail.unit_types.map((unit) => (
-                      <span key={unit} className="estate-property-card__chip estate-property-card__chip--accent">
-                        {unit}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="estate-overlay__placeholder">
-            Select a property on the left to see pricing, amenities, and floor plan highlights.
-          </div>
-        )}
+          </section>
+        </div>
       </div>
     </div>
   );

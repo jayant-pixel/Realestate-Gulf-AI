@@ -39,6 +39,20 @@ export default function EstateRoomClient({ roomName, slug }: EstateRoomClientPro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const stopAgent = useCallback(async () => {
+    if (!SUPABASE_URL) return;
+    try {
+      const headers = buildSupabaseHeaders();
+      await fetch(`${SUPABASE_URL}/functions/v1/livekit-stop-agent`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ room: resolvedRoom }),
+      });
+    } catch (err) {
+      console.warn('[EstateRoomClient] Unable to stop agent', err);
+    }
+  }, [SUPABASE_URL, buildSupabaseHeaders, resolvedRoom]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const key = slug ? `estate-visitor:${slug}` : `estate-visitor:${resolvedRoom}`;
@@ -130,6 +144,11 @@ export default function EstateRoomClient({ roomName, slug }: EstateRoomClientPro
         if (publicLink.config || visitorName) {
           agentPayload.agentConfig = {
             ...(publicLink.config ?? {}),
+            visitorName,
+          };
+          agentPayload.metadata = {
+            slug: publicLink.slug,
+            linkId: publicLink.id,
             visitorName,
           };
         }
@@ -229,12 +248,13 @@ export default function EstateRoomClient({ roomName, slug }: EstateRoomClientPro
   }, [buildSupabaseHeaders, resolvedRoom, slug, visitorName]);
 
   const handleLeave = useCallback(() => {
+    void stopAgent();
     if (slug) {
       router.push(`/avatar/${encodeURIComponent(slug)}`);
     } else {
       router.push('/');
     }
-  }, [router, slug]);
+  }, [router, slug, stopAgent]);
 
   const roomOptions = useMemo<RoomOptions>(() => {
     return {
@@ -252,6 +272,12 @@ export default function EstateRoomClient({ roomName, slug }: EstateRoomClientPro
   }, []);
 
   const room = useMemo(() => new Room(roomOptions), [roomOptions]);
+
+  useEffect(() => {
+    return () => {
+      void stopAgent();
+    };
+  }, [stopAgent]);
 
   if (loading) {
     return (

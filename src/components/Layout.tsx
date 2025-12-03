@@ -13,6 +13,8 @@ import {
   Bot,
   LogOut,
   Building2,
+  ClipboardList,
+  KanbanSquare,
 } from 'lucide-react';
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -27,6 +29,8 @@ export default function Layout({ children }: { children: ReactNode }) {
     { name: 'Reports', href: '/reports', icon: BarChart3 },
     { name: 'Knowledge Base', href: '/kb', icon: Database },
     { name: 'AI Avatars', href: '/avatars', icon: Bot },
+    { name: 'Forms', href: '/forms', icon: ClipboardList },
+    { name: 'Pipeline', href: '/pipeline', icon: KanbanSquare },
   ];
 
   const isActive = (path: string) => pathname === path;

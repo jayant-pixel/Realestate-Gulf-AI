@@ -31,6 +31,10 @@ interface PropertyShowcaseProps {
   onSelect?: (propertyId: string) => void;
   selectedPropertyId?: string;
   detail?: PropertyDetail | null;
+  onRequestTour?: (propertyId?: string) => void;
+  onRequestBrochure?: (propertyId?: string) => void;
+  onShareContact?: (propertyId?: string) => void;
+  ctaDisabled?: boolean;
   className?: string;
 }
 
@@ -42,6 +46,10 @@ export function PropertyShowcase({
   onSelect,
   selectedPropertyId,
   detail,
+  onRequestTour,
+  onRequestBrochure,
+  onShareContact,
+  ctaDisabled,
   className,
 }: PropertyShowcaseProps) {
   return (
@@ -178,6 +186,33 @@ export function PropertyShowcase({
                   ))}
                 </div>
               )}
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onRequestTour?.(detail.id ? String(detail.id) : undefined)}
+                  disabled={ctaDisabled}
+                  className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-cyan-500/25 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Book tour
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRequestBrochure?.(detail.id ? String(detail.id) : undefined)}
+                  disabled={ctaDisabled}
+                  className="inline-flex items-center justify-center rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-white ring-1 ring-white/20 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Request brochure
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onShareContact?.(detail.id ? String(detail.id) : undefined)}
+                  disabled={ctaDisabled}
+                  className="inline-flex items-center justify-center rounded-full bg-amber-400/80 px-4 py-2 text-xs font-semibold text-amber-950 shadow-lg shadow-amber-400/40 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Share contact
+                </button>
+              </div>
             </div>
           </div>
         ) : (

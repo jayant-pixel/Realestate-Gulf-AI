@@ -33,9 +33,28 @@ export interface Lead {
     '6m': number;
     '9m': number;
   };
-  stage: 'New' | 'Qualified' | 'Site Visit' | 'Negotiation' | 'Closed' | 'Lost';
+  stage:
+    | 'new'
+    | 'contacted'
+    | 'qualified'
+    | 'follow_up'
+    | 'site_visit'
+    | 'negotiation'
+    | 'closed_won'
+    | 'closed_lost'
+    | 'New'
+    | 'Qualified'
+    | 'Site Visit'
+    | 'Negotiation'
+    | 'Closed'
+    | 'Lost';
   created_at: string;
   updated_at: string;
+  source?: string | null;
+  last_call_id?: string | null;
+  last_call_summary?: string | null;
+  timeline?: string | null;
+  budget_confirmed?: number | null;
 }
 
 export interface Conversation {
@@ -79,6 +98,8 @@ export interface AIAvatar {
   anam_avatar_id?: string | null;
   openai_voice?: string | null;
   openai_realtime_model?: string | null;
+  prompt_version?: string | null;
+  prompt_updated_at?: string | null;
 }
 
 export interface PublicLink {
@@ -136,4 +157,41 @@ export interface AgentPerformance {
   leads_handled: number;
   tasks_created: number;
   notes_added: number;
+}
+
+export interface Form {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  fields: Record<string, unknown>;
+  embed_token: string;
+  is_active: boolean;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormSubmission {
+  id: string;
+  form_id: string;
+  lead_id?: string | null;
+  payload: Record<string, unknown>;
+  status: 'received' | 'queued' | 'called' | 'completed' | 'failed';
+  created_at: string;
+}
+
+export interface CallLog {
+  id: string;
+  lead_id?: string | null;
+  form_submission_id?: string | null;
+  phone?: string | null;
+  call_sid?: string | null;
+  status?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  duration_seconds?: number | null;
+  recording_url?: string | null;
+  analysis?: Record<string, unknown> | null;
+  created_at: string;
 }

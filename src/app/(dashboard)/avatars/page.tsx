@@ -17,6 +17,7 @@ interface AvatarFormState {
   anam_avatar_id: string;
   openai_voice: string;
   openai_realtime_model: string;
+  prompt_version: string;
   is_active: boolean;
 }
 
@@ -39,35 +40,34 @@ const DEFAULT_AGENT_IDENTITY = 'Estate Buddy';
 const DEFAULT_RATE_LIMIT = 30;
 
 const DEFAULT_PROMPT = [
-  '# Role',
-  'You are Estate Buddy, the always-on concierge for Gulf Estate AI. Greet every visitor, learn their goals, surface matching properties, and guide them toward a clear next action such as scheduling a tour or requesting a follow-up.',
+  'You are Estate Buddy, the Gulf Estate AI concierge. You host visitors in a LiveKit room with an avatar voice. Keep replies concise, confident, and grounded in Supabase-backed property data.',
   '',
-  '# Persona',
-  '- Speak like a confident, helpful property consultant.',
-  '- Reference concrete facts about price, availability, amenities, and timelines.',
-  '- Keep responses focused, acknowledge what the visitor said, and invite follow-up questions.',
+  'Session context: {{SESSION_CONTEXT}}. If missing, ask for the visitor name. Never invent prices or availability.',
   '',
-  '# Flow',
-  '1. Welcome and confirm the visitor name when known.',
-  '2. Ask about budget, location preferences, property type, move-in timing, and must-have features.',
-  '3. Call `list_properties` before describing options so the carousel matches the conversation.',
-  '4. When the visitor prefers a listing, call `show_property_detail` and narrate the highlights you see.',
-  '5. After confirming their name plus phone or email, call `create_lead` and reassure them about follow-up.',
-  '6. Use `log_activity` for promised brochures, tours, or custom requirements so the CRM stays current.',
-  '7. Summarize next steps, thank the visitor, and stay available for final questions.',
+  'Output rules:',
+  '- Speak in short paragraphs or bullets (1–3 sentences).',
+  '- Keep the UI in sync: call tools whenever you describe options or details so overlays/RPCs match the conversation.',
+  '- Confirm when you capture contact info or log an action.',
   '',
-  '# Tool Guidance',
-  '- `list_properties`: Run after discovery questions or whenever the visitor asks for options. Include filters such as location, max budget, or bedrooms when available.',
-  '- `show_property_detail`: Trigger once the visitor focuses on a specific listing and invite their feedback.',
-  '- `create_lead`: Use only after confirming the visitor\'s name and a contact method.',
-  '- `log_activity`: Record promised actions (brochures, tours, follow-ups) so the sales team stays aligned.',
+  'Guided flow:',
+  '1) Welcome: greet, use visitor name if present, ask budget, preferred locations, property type, move-in timing, and must-have amenities.',
+  '2) List: call `list_properties` with filters before describing options; narrate 2–3 matches and invite a choice.',
+  '3) Detail: when a property is chosen (visitor or RPC), call `show_property_detail` and walk through highlights, price, availability, amenities, unit types. Offer FAQs.',
+  '4) Commit: confirm visitor name + phone/email; then call `create_lead`. Use `log_activity` for tours/brochures/special asks.',
+  '5) Next steps: summarize agreed actions, directions if relevant, and keep the line open.',
   '',
-  '# Guardrails',
-  '- Never invent data; if unsure, promise to verify with the sales team.',
-  '- Avoid guarantees about pricing or discounts; stay factual and balanced.',
-  '- Ask the visitor to repeat themselves when audio is unclear.',
-  '- Keep the UI synchronized with the conversation by refreshing property lists when preferences change.',
-].join('\n');
+  'Tool rules:',
+  '- list_properties(query, location, max_budget, bedrooms, overlay_id): include filters you know; always call before describing a set of options.',
+  '- show_property_detail(property_id, overlay_id): call after the visitor picks a listing; narrate what you see in the card.',
+  '- create_lead(full_name, email, phone, ...): only after you have name + phone/email; confirm creation.',
+  '- log_activity(lead_id, message, activity_type): record promised tours/brochures/follow-ups.',
+  '- show_directions(locations): share labeled pickup/office directions when requested.',
+  '',
+  'Guardrails:',
+  '- Do not invent inventory, pricing, or timelines; if unknown, say you will confirm.',
+  '- Avoid promises/discounts. Keep tone professional and concise.',
+  '- If speech is unclear, ask the visitor to repeat.',
+].join('\\n');
 
 const REALTIME_MODELS = [
   { value: 'gpt-realtime-2025-08-28', label: 'GPT Realtime (2025-08-28)' },
@@ -134,6 +134,7 @@ const INITIAL_FORM: AvatarFormState = {
   anam_avatar_id: DEFAULT_ANAM_AVATAR,
   openai_voice: DEFAULT_VOICE,
   openai_realtime_model: DEFAULT_MODEL,
+  prompt_version: 'v1',
   is_active: true,
 };
 
@@ -173,6 +174,7 @@ type PromptMetadata = {
   model: string;
   voice: string;
   persona: string;
+  promptVersion?: string;
 };
 
 function encodePrompt(prompt: string, metadata: PromptMetadata): string {
@@ -213,6 +215,7 @@ function toAvatarForm(avatar: AIAvatar | null): AvatarFormState {
     anam_avatar_id: decoded.metadata.persona ?? avatar.anam_avatar_id ?? DEFAULT_ANAM_AVATAR,
     openai_voice: decoded.metadata.voice ?? avatar.openai_voice ?? DEFAULT_VOICE,
     openai_realtime_model: decoded.metadata.model ?? avatar.openai_realtime_model ?? DEFAULT_MODEL,
+    prompt_version: decoded.metadata.promptVersion ?? avatar.prompt_version ?? 'v1',
     is_active: avatar.is_active ?? true,
   };
 }
@@ -392,6 +395,18 @@ export default function AvatarsPage(): JSX.Element {
         setFeedback({ type: 'error', text: 'System prompt cannot be empty.' });
         return;
       }
+      if (!form.openai_realtime_model.trim()) {
+        setFeedback({ type: 'error', text: 'Realtime model is required.' });
+        return;
+      }
+      if (!form.openai_voice.trim()) {
+        setFeedback({ type: 'error', text: 'Realtime voice is required.' });
+        return;
+      }
+      if (!form.prompt_version.trim()) {
+        setFeedback({ type: 'error', text: 'Prompt version is required.' });
+        return;
+      }
 
       setSaving(true);
       setFeedback(null);
@@ -400,12 +415,19 @@ export default function AvatarsPage(): JSX.Element {
           model: form.openai_realtime_model,
           voice: form.openai_voice,
           persona: form.anam_avatar_id,
+          promptVersion: form.prompt_version,
         });
 
+        const promptUpdatedAt = new Date().toISOString();
         const basePayload = {
           name: form.name.trim(),
           system_prompt: persistedPrompt,
           is_active: form.is_active,
+          anam_avatar_id: form.anam_avatar_id,
+          openai_voice: form.openai_voice,
+          openai_realtime_model: form.openai_realtime_model,
+          prompt_version: form.prompt_version,
+          prompt_updated_at: promptUpdatedAt,
         };
 
         if (form.id) {
@@ -497,6 +519,7 @@ export default function AvatarsPage(): JSX.Element {
           assistantPrompt: form.system_prompt,
           model: form.openai_realtime_model,
           voice: form.openai_voice,
+          promptVersion: form.prompt_version,
           avatarId: form.anam_avatar_id,
           welcomeMessage: share.welcomeMessage,
           ...(selectedPersona
@@ -785,7 +808,20 @@ export default function AvatarsPage(): JSX.Element {
               </div>
 
               <label className="space-y-2 text-sm">
-                <span className="font-medium text-gray-700">System prompt</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-gray-700">System prompt</span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-gray-500">Version</span>
+                    <input
+                      type="text"
+                      value={form.prompt_version}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, prompt_version: event.target.value.trim() || 'v1' }))
+                      }
+                      className="w-28 rounded-xl border border-gray-200 px-2 py-1 text-right font-semibold uppercase tracking-wide text-gray-700 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-200"
+                    />
+                  </div>
+                </div>
                 <textarea
                   value={form.system_prompt}
                   onChange={(event) => setForm((prev) => ({ ...prev, system_prompt: event.target.value }))}
