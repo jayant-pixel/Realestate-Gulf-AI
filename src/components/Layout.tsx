@@ -22,79 +22,146 @@ export default function Layout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
 
-  const navigation = [
+  const mainMenu = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Agents', href: '/agents', icon: Users },
+    { name: 'Clients', href: '/clients', icon: Users },
+    { name: 'Analytics', href: '/reports', icon: BarChart3 },
+    { name: 'Calendar', href: '/calendar', icon: ClipboardList },
+    { name: 'Messages', href: '/conversations', icon: MessageSquare },
+  ];
+
+  const salesChannel = [
+    { name: 'Properties', href: '/dashboard', icon: Building2 }, // Temporary link
     { name: 'Leads', href: '/leads', icon: Users },
-    { name: 'Conversations', href: '/conversations', icon: MessageSquare },
-    { name: 'Reports', href: '/reports', icon: BarChart3 },
-    { name: 'Knowledge Base', href: '/kb', icon: Database },
-    { name: 'AI Avatars', href: '/avatars', icon: Bot },
-    { name: 'Forms', href: '/forms', icon: ClipboardList },
-    { name: 'Pipeline', href: '/pipeline', icon: KanbanSquare },
+    { name: 'Transactions', href: '/pipeline', icon: KanbanSquare },
+    { name: 'Discounts', href: '/discounts', icon: Database },
+  ];
+
+  const bottomMenu = [
+    { name: 'Settings', href: '/settings', icon: Bot }, // Using Bot as placeholder for settings icon if needed or import Settings
+    { name: 'Help Center', href: '/help', icon: ClipboardList },
+    { name: 'Feedback', href: '/feedback', icon: MessageSquare },
   ];
 
   const isActive = (path: string) => pathname === path;
 
   return (
-    <div className="min-h-screen bg-gray-50" suppressHydrationWarning>
-      <nav className="bg-white border-b border-gray-200 fixed top-0 left-0 right-0 z-40">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Realestate AI</h1>
-                <p className="text-xs text-gray-600">Voice-First CRM</p>
-              </div>
+    <div className="min-h-screen bg-gray-50 flex font-sans text-slate-600" suppressHydrationWarning>
+      {/* Sidebar */}
+      <aside className="w-64 bg-sidebar border-r border-gray-100 flex-shrink-0 flex flex-col fixed top-0 bottom-0 z-50">
+        <div className="h-20 flex items-center px-8">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center text-white font-bold text-lg">
+              G
             </div>
+            <span className="text-xl font-bold text-slate-800">Glamhaven</span>
+          </div>
+        </div>
 
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">{profile?.display_name}</p>
-                <p className="text-xs text-gray-600">Admin</p>
-              </div>
-              <button
-                onClick={() => {
-                  void signOut().then(() => router.replace('/auth'));
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Sign Out"
-              >
-                <LogOut className="w-5 h-5 text-gray-600" />
-              </button>
+        <div className="flex-1 overflow-y-auto py-6 px-4 space-y-8 scrollbar-none">
+          {/* Main Menu */}
+          <div>
+            <h3 className="px-4 text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">Main Menu</h3>
+            <div className="space-y-1">
+              {mainMenu.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href);
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium ${active
+                        ? 'bg-primary-50 text-primary-600'
+                        : 'text-slate-500 hover:bg-gray-50 hover:text-slate-900'
+                      }`}
+                  >
+                    <Icon className={`w-5 h-5 ${active ? 'text-primary-500' : 'text-slate-400'}`} />
+                    <span>{item.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Sales Channel */}
+          <div>
+            <h3 className="px-4 text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">Sales Chanel</h3>
+            <div className="space-y-1">
+              {salesChannel.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href);
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium ${active
+                        ? 'bg-primary-50 text-primary-600'
+                        : 'text-slate-500 hover:bg-gray-50 hover:text-slate-900'
+                      }`}
+                  >
+                    <Icon className={`w-5 h-5 ${active ? 'text-primary-500' : 'text-slate-400'}`} />
+                    <span>{item.name}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>
-      </nav>
 
-      <div className="flex pt-20">
-        <aside className="w-64 bg-white border-r border-gray-200 fixed left-0 top-20 bottom-0 overflow-y-auto">
-          <nav className="p-4 space-y-1">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                    active
-                      ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.name}</span>
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
+        {/* Bottom Menu */}
+        <div className="p-4 border-t border-gray-100 space-y-1">
+          {bottomMenu.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.name}
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-500 hover:bg-gray-50 hover:text-slate-900 transition-colors text-sm font-medium"
+              >
+                <Icon className="w-5 h-5 text-slate-400" />
+                <span>{item.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
 
-        <main className="flex-1 ml-64 p-8">{children}</main>
-      </div>
+      {/* Main Content */}
+      <main className="flex-1 ml-64 min-h-screen flex flex-col">
+        {/* Header */}
+        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-40">
+          <div className="flex items-center text-sm text-slate-500">
+            <span className="hover:text-slate-900 cursor-pointer">Home</span>
+            <span className="mx-2">/</span>
+            <span className="font-medium text-slate-900">Dashboard</span>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
+              <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></div>
+              <Bot className="w-5 h-5" /> {/* Placeholder for Bell */}
+            </button>
+
+            <div className="flex items-center gap-3 pl-6 border-l border-gray-100">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-bold text-slate-900">{profile?.display_name || 'Shazzad Shoikat'}</p>
+                <p className="text-xs text-slate-500">Sales Manager</p>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden ring-2 ring-white shadow-sm">
+                {/* Avatar placeholder if no image */}
+                <div className="w-full h-full flex items-center justify-center bg-primary-100 text-primary-600 font-bold">
+                  {profile?.display_name?.[0] || 'S'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <div className="p-8">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
